@@ -302,7 +302,7 @@ def add_generic_args(parser, root_dir) -> None:
         action="store_true",
         help="Whether to use 16-bit (mixed) precision instead of 32-bit",
     )
-
+    parser.add_argument("--bf16", action="store_true", help="Use bfloat16 (mixed) precision instead of 32-bit")
     parser.add_argument("--n_tpu_cores", dest="tpu_cores", type=int)
     parser.add_argument("--max_grad_norm", dest="gradient_clip_val", default=1.0, type=float, help="Max gradient norm")
     parser.add_argument("--do_train", action="store_true", help="Whether to run training.")
@@ -354,6 +354,8 @@ def generic_train(
 
     if args.fp16:
         train_params["precision"] = 16
+    elif args.bf16:
+        train_params["precision"] = "bf16"
 
     if args.gpus > 1:
         train_params["accelerator"] = "ddp"

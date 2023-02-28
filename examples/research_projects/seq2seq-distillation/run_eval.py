@@ -35,6 +35,7 @@ def generate_summaries_or_translations(
     batch_size: int = 8,
     device: str = DEFAULT_DEVICE,
     fp16=False,
+    bf16=False,
     is_quantized_model=False,
     task="summarization",
     prefix=None,
@@ -51,6 +52,8 @@ def generate_summaries_or_translations(
 
     if fp16:
         model = model.half()
+    elif bf16:
+        model = model.to(torch.bfloat16)
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     logger.info(f"Inferred tokenizer type: {tokenizer.__class__}")  # if this is wrong, check config.model_type.
@@ -115,6 +118,7 @@ def run_generate(verbose=True):
         "--n_obs", type=int, default=-1, required=False, help="How many observations. Defaults to all."
     )
     parser.add_argument("--fp16", action="store_true")
+    parser.add_argument("--bf16", action="store_true")
     parser.add_argument("--is_quantized_model", action="store_true", help="Set this flag if the model is quantized")
     parser.add_argument("--dump-args", action="store_true", help="print the custom hparams with the results")
     parser.add_argument(
@@ -146,6 +150,7 @@ def run_generate(verbose=True):
         batch_size=args.bs,
         device=args.device,
         fp16=args.fp16,
+        bf16=args.bf16,
         is_quantized_model=args.is_quantized_model,
         task=args.task,
         prefix=args.prefix,
