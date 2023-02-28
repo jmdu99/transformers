@@ -167,8 +167,8 @@ class BaseTransformer(pl.LightningModule):
         effective_batch_size = self.hparams.train_batch_size * self.hparams.accumulate_grad_batches * num_devices
         return (self.dataset_size / effective_batch_size) * self.hparams.max_epochs
 
-    def setup(self, mode):
-        if mode == "test":
+    def setup(self, stage):
+        if stage == "test":
             self.dataset_size = len(self.test_dataloader().dataset)
         else:
             self.train_loader = self.get_dataloader("train", self.hparams.train_batch_size, shuffle=True)
@@ -186,11 +186,11 @@ class BaseTransformer(pl.LightningModule):
     def test_dataloader(self):
         return self.get_dataloader("test", self.hparams.eval_batch_size, shuffle=False)
 
-    def _feature_file(self, mode):
+    def _feature_file(self, stage):
         return os.path.join(
             self.hparams.data_dir,
             "cached_{}_{}_{}".format(
-                mode,
+                stage,
                 list(filter(None, self.hparams.model_name_or_path.split("/"))).pop(),
                 str(self.hparams.max_seq_length),
             ),
@@ -267,11 +267,6 @@ class BaseTransformer(pl.LightningModule):
 
 
 class LoggingCallback(pl.Callback):
-    def on_batch_end(self, trainer, pl_module):
-        lr_scheduler = trainer.lr_schedulers[0]["scheduler"]
-        lrs = {f"lr_group_{i}": lr for i, lr in enumerate(lr_scheduler.get_lr())}
-        pl_module.logger.log_metrics(lrs)
-
     def on_validation_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
         rank_zero_info("***** Validation results *****")
         metrics = trainer.callback_metrics
@@ -305,18 +300,9 @@ def add_generic_args(parser, root_dir) -> None:
     parser.add_argument(
         "--fp16",
         action="store_true",
-        help="Whether to use 16-bit (mixed) precision (through NVIDIA apex) instead of 32-bit",
+        help="Whether to use 16-bit (mixed) precision instead of 32-bit",
     )
 
-    parser.add_argument(
-        "--fp16_opt_level",
-        type=str,
-        default="O2",
-        help=(
-            "For fp16: Apex AMP optimization level selected in ['O0', 'O1', 'O2', and 'O3']."
-            "See details at https://nvidia.github.io/apex/amp.html"
-        ),
-    )
     parser.add_argument("--n_tpu_cores", dest="tpu_cores", type=int)
     parser.add_argument("--max_grad_norm", dest="gradient_clip_val", default=1.0, type=float, help="Max gradient norm")
     parser.add_argument("--do_train", action="store_true", help="Whether to run training.")
@@ -366,13 +352,11 @@ def generic_train(
 
     train_params = {}
 
-    # TODO: remove with PyTorch 1.6 since pl uses native amp
     if args.fp16:
         train_params["precision"] = 16
-        train_params["amp_level"] = args.fp16_opt_level
 
     if args.gpus > 1:
-        train_params["distributed_backend"] = "ddp"
+        train_params["accelerator"] = "ddp"
 
     train_params["accumulate_grad_batches"] = args.accumulate_grad_batches
     train_params["accelerator"] = extra_train_kwargs.get("accelerator", None)
@@ -380,10 +364,8 @@ def generic_train(
 
     trainer = pl.Trainer.from_argparse_args(
         args,
-        weights_summary=None,
-        callbacks=[logging_callback] + extra_callbacks,
+        callbacks=[logging_callback, checkpoint_callback] + extra_callbacks,
         logger=logger,
-        checkpoint_callback=checkpoint_callback,
         **train_params,
     )
 

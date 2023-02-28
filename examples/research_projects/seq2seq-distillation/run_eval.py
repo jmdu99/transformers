@@ -13,13 +13,19 @@ import torch
 from tqdm import tqdm
 
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+from optimum.intel.neural_compressor import INCModelForSeq2SeqLM
 from utils import calculate_bleu, calculate_rouge, chunks, parse_numeric_n_bool_cl_kwargs, use_task_specific_params
 
 
 logger = getLogger(__name__)
 
 
-DEFAULT_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+for i in range(torch.cuda.device_count()):
+    if torch.cuda.max_memory_allocated(i) == 0:
+        DEFAULT_DEVICE = "cuda:" + str(i)
+        break
+    else:
+        DEFAULT_DEVICE = "cpu"
 
 
 def generate_summaries_or_translations(
@@ -29,6 +35,7 @@ def generate_summaries_or_translations(
     batch_size: int = 8,
     device: str = DEFAULT_DEVICE,
     fp16=False,
+    is_quantized_model=False,
     task="summarization",
     prefix=None,
     **generate_kwargs,
@@ -36,7 +43,12 @@ def generate_summaries_or_translations(
     """Save model.generate results to <out_file>, and return how long it took."""
     fout = Path(out_file).open("w", encoding="utf-8")
     model_name = str(model_name)
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_name).to(device)
+
+    if is_quantized_model:
+        model = INCModelForSeq2SeqLM.from_pretrained(model_name).to(device)
+    else:
+        model = AutoModelForSeq2SeqLM.from_pretrained(model_name).to(device)
+
     if fp16:
         model = model.half()
 
@@ -63,7 +75,8 @@ def generate_summaries_or_translations(
     fout.close()
     runtime = int(time.time() - start_time)  # seconds
     n_obs = len(examples)
-    return {"n_obs": n_obs, "runtime": runtime, "seconds_per_sample": round(runtime / n_obs, 4)}
+    return dict(n_obs=n_obs, runtime=runtime, seconds_per_sample=round(runtime / n_obs, 4),
+                samples_per_second=round(n_obs / runtime, 4))
 
 
 def datetime_now():
@@ -102,6 +115,7 @@ def run_generate(verbose=True):
         "--n_obs", type=int, default=-1, required=False, help="How many observations. Defaults to all."
     )
     parser.add_argument("--fp16", action="store_true")
+    parser.add_argument("--is_quantized_model", action="store_true", help="Set this flag if the model is quantized")
     parser.add_argument("--dump-args", action="store_true", help="print the custom hparams with the results")
     parser.add_argument(
         "--info",
@@ -132,6 +146,7 @@ def run_generate(verbose=True):
         batch_size=args.bs,
         device=args.device,
         fp16=args.fp16,
+        is_quantized_model=args.is_quantized_model,
         task=args.task,
         prefix=args.prefix,
         **parsed_args,

@@ -23,7 +23,7 @@ LAYERS_TO_COPY = {
     # 12: bart, 16: pegasus, 6: marian/Helsinki-NLP
     12: {
         1: [0],  # This says that if the teacher has 12 layers and the student has 1, copy layer 0 of the teacher
-        2: [0, 6],
+        2: [0, 11],
         3: [0, 6, 11],
         4: [0, 4, 8, 11],
         6: [0, 2, 4, 7, 9, 11],
@@ -42,6 +42,16 @@ LAYERS_TO_COPY = {
         16: list(range(16)),
     },
     6: {1: [0], 2: [0, 5], 3: [0, 2, 5], 4: [0, 1, 3, 5], 6: list(range(6))},
+    24: {
+        1: [0],
+        2: [0, 23],
+        3: [0, 11, 23],
+        4: [0, 7, 15, 23],
+        6: [0, 4, 8, 12, 16, 23],
+        8: [0, 2, 4, 7, 10, 13, 17, 23]
+    },
+    8: {1: [0], 2: [0, 7], 3: [0, 3, 7], 4: [0, 2, 5, 7], 6: [0, 1, 3, 4, 6, 7], 8: list(range(8))},
+
 }
 LAYERS_TO_SUPERVISE = {
     # maps  num layers in student -> which teacher layers to copy.
@@ -171,11 +181,11 @@ def create_student_by_copying_alternating_layers(
     logger.info(
         f"Copied encoder layers {e_layers_to_copy} and decoder layers {d_layers_to_copy}. Saving them to {save_path}"
     )
-    student.config.init_metadata = {
-        "teacher_type": teacher.config.model_type,
-        "copied_encoder_layers": e_layers_to_copy,
-        "copied_decoder_layers": d_layers_to_copy,
-    }
+    student.config.init_metadata = dict(
+        teacher_type=teacher.config.model_type,
+        copied_encoder_layers=e_layers_to_copy,
+        copied_decoder_layers=d_layers_to_copy,
+    )
     student.save_pretrained(save_path)
     # Save information about copying for easier reproducibility
 

@@ -1,3 +1,6 @@
+transformers==4.26.0
+datasets[s3]==2.9.0
+torch
 tensorboard
 scikit-learn
 psutil
@@ -12,7 +15,7 @@ streamlit
 elasticsearch
 nltk
 pandas
-datasets >= 1.1.3
+datasets
 fire
 pytest
 conllu

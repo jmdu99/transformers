@@ -20,10 +20,6 @@ logger = logging.getLogger(__name__)
 
 
 class Seq2SeqLoggingCallback(pl.Callback):
-    def on_batch_end(self, trainer, pl_module):
-        lrs = {f"lr_group_{i}": param["lr"] for i, param in enumerate(pl_module.trainer.optimizers[0].param_groups)}
-        pl_module.logger.log_metrics(lrs)
-
     @rank_zero_only
     def _write_logs(
         self, trainer: pl.Trainer, pl_module: pl.LightningModule, type_path: str, save_generations=True
@@ -79,21 +75,19 @@ class Seq2SeqLoggingCallback(pl.Callback):
     @rank_zero_only
     def on_validation_end(self, trainer: pl.Trainer, pl_module):
         save_json(pl_module.metrics, pl_module.metrics_save_path)
-        # Uncommenting this will save val generations
-        # return self._write_logs(trainer, pl_module, "valid")
 
 
 def get_checkpoint_callback(output_dir, metric, save_top_k=1, lower_is_better=False):
-    """Saves the best model by validation ROUGE2 score."""
-    if metric == "rouge2":
-        exp = "{val_avg_rouge2:.4f}-{step_count}"
+    """Saves the best model by validation rougeLsum score."""
+    if metric == "rougeLsum":
+        exp = "{val_rougeLsum:.8f}-{step_count}"
     elif metric == "bleu":
-        exp = "{val_avg_bleu:.4f}-{step_count}"
+        exp = "{val_bleu:.8f}-{step_count}"
     elif metric == "loss":
-        exp = "{val_avg_loss:.4f}-{step_count}"
+        exp = "{val_loss:.8f}-{step_count}"
     else:
         raise NotImplementedError(
-            f"seq2seq callbacks only support rouge2, bleu and loss, got {metric}, You can make your own by adding to"
+            f"seq2seq callbacks only support rougeLsum, bleu and loss, got {metric}, You can make your own by adding to"
             " this function."
         )
 

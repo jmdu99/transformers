@@ -52,7 +52,7 @@ class SummarizationModule(BaseTransformer):
     mode = "summarization"
     loss_names = ["loss"]
     metric_names = ROUGE_KEYS
-    default_val_metric = "rouge2"
+    default_val_metric = "rougeLsum"
 
     def __init__(self, hparams, **kwargs):
         if hparams.sortish_sampler and hparams.gpus > 1:
@@ -74,11 +74,11 @@ class SummarizationModule(BaseTransformer):
         self.model_type = self.config.model_type
         self.vocab_size = self.config.tgt_vocab_size if self.model_type == "fsmt" else self.config.vocab_size
 
-        self.dataset_kwargs: dict = {
-            "data_dir": self.hparams.data_dir,
-            "max_source_length": self.hparams.max_source_length,
-            "prefix": self.model.config.prefix or "",
-        }
+        self.dataset_kwargs: dict = dict(
+            data_dir=self.hparams.data_dir,
+            max_source_length=self.hparams.max_source_length,
+            prefix=self.model.config.prefix or "",
+        )
         n_observations_per_split = {
             "train": self.hparams.n_train,
             "val": self.hparams.n_val,
@@ -143,7 +143,7 @@ class SummarizationModule(BaseTransformer):
         if isinstance(self.model, T5ForConditionalGeneration):
             decoder_input_ids = self.model._shift_right(tgt_ids)
         else:
-            decoder_input_ids = shift_tokens_right(tgt_ids, pad_token_id)
+            decoder_input_ids = shift_tokens_right(tgt_ids, pad_token_id, self.model.config.decoder_start_token_id)
         if not self.already_saved_batch:  # This would be slightly better if it only happened on rank zero
             batch["decoder_input_ids"] = decoder_input_ids
             self.save_readable_batch(batch)
@@ -195,12 +195,13 @@ class SummarizationModule(BaseTransformer):
         metric_tensor: torch.FloatTensor = torch.tensor(metric_val).type_as(loss)
         generative_metrics.update({k: v.item() for k, v in losses.items()})
         losses.update(generative_metrics)
-        all_metrics = {f"{prefix}_avg_{k}": x for k, x in losses.items()}
+        all_metrics = {f"{prefix}_{k}": x for k, x in losses.items()}
         all_metrics["step_count"] = self.step_count
         self.metrics[prefix].append(all_metrics)  # callback writes this to self.metrics_save_path
         preds = flatten_list([x["preds"] for x in outputs])
+        for key, value in all_metrics.items():
+            self.log(key, value, on_epoch=True, prog_bar=True, logger=True, sync_dist =True)
         return {
-            "log": all_metrics,
             "preds": preds,
             f"{prefix}_loss": loss,
             f"{prefix}_{self.val_metric}": metric_tensor,
@@ -352,7 +353,7 @@ class SummarizationModule(BaseTransformer):
         parser.add_argument("--tgt_lang", type=str, default="", required=False)
         parser.add_argument("--eval_beams", type=int, default=None, required=False)
         parser.add_argument(
-            "--val_metric", type=str, default=None, required=False, choices=["bleu", "rouge2", "loss", None]
+            "--val_metric", type=str, default=None, required=False, choices=["bleu", "rougeLsum", "loss", None]
         )
         parser.add_argument("--eval_max_gen_length", type=int, default=None, help="never generate more than n tokens")
         parser.add_argument("--save_top_k", type=int, default=1, required=False, help="How many checkpoints to save")
@@ -433,7 +434,7 @@ def main(args, model=None) -> SummarizationModule:
         return model
 
     model.hparams.test_checkpoint = ""
-    checkpoints = sorted(glob.glob(os.path.join(args.output_dir, "*.ckpt"), recursive=True))
+    checkpoints = list(sorted(glob.glob(os.path.join(args.output_dir, "*.ckpt"), recursive=True)))
     if checkpoints:
         model.hparams.test_checkpoint = checkpoints[-1]
         trainer.resume_from_checkpoint = checkpoints[-1]
