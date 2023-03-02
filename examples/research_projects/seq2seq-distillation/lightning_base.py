@@ -22,11 +22,12 @@ from transformers import (
     PreTrainedTokenizer,
 )
 from transformers.optimization import (
-    Adafactor,
+    get_linear_schedule_with_warmup,
     get_cosine_schedule_with_warmup,
     get_cosine_with_hard_restarts_schedule_with_warmup,
-    get_linear_schedule_with_warmup,
     get_polynomial_decay_schedule_with_warmup,
+    get_constant_schedule,
+    get_constant_schedule_with_warmup,
 )
 from transformers.utils.versions import require_version
 
@@ -53,8 +54,8 @@ arg_to_scheduler = {
     "cosine": get_cosine_schedule_with_warmup,
     "cosine_w_restarts": get_cosine_with_hard_restarts_schedule_with_warmup,
     "polynomial": get_polynomial_decay_schedule_with_warmup,
-    # '': get_constant_schedule,             # not supported for now
-    # '': get_constant_schedule_with_warmup, # not supported for now
+    "constant": get_constant_schedule,
+    "constant_w_warmup": get_constant_schedule_with_warmup,
 }
 arg_to_scheduler_choices = sorted(arg_to_scheduler.keys())
 arg_to_scheduler_metavar = "{" + ", ".join(arg_to_scheduler_choices) + "}"
@@ -120,9 +121,13 @@ class BaseTransformer(pl.LightningModule):
 
     def get_lr_scheduler(self):
         get_schedule_func = arg_to_scheduler[self.hparams.lr_scheduler]
-        scheduler = get_schedule_func(
-            self.opt, num_warmup_steps=self.hparams.warmup_steps, num_training_steps=self.total_steps()
-        )
+        if self.hparams.lr_scheduler == "constant":
+            scheduler = get_schedule_func(self.opt)
+        elif self.hparams.lr_scheduler == "constant_w_warmup":
+            scheduler = get_schedule_func(self.opt, num_warmup_steps=self.hparams.warmup_steps)
+        else:
+            scheduler = get_schedule_func(self.opt, num_warmup_steps=self.hparams.warmup_steps,
+                                          num_training_steps=self.total_steps())
         scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
         return scheduler
 
@@ -147,7 +152,10 @@ class BaseTransformer(pl.LightningModule):
 
         else:
             optimizer = AdamW(
-                optimizer_grouped_parameters, lr=self.hparams.learning_rate, eps=self.hparams.adam_epsilon
+                optimizer_grouped_parameters,
+                lr=self.hparams.learning_rate,
+                betas=self.hparams.adam_betas,
+                eps=self.hparams.adam_epsilon,
             )
         self.opt = optimizer
 
@@ -258,6 +266,7 @@ class BaseTransformer(pl.LightningModule):
         )
         parser.add_argument("--weight_decay", default=0.0, type=float, help="Weight decay if we apply some.")
         parser.add_argument("--adam_epsilon", default=1e-8, type=float, help="Epsilon for Adam optimizer.")
+        parser.add_argument("--adam_betas", default=[0.9, 0.999], nargs=2, type=float, help="Betas for Adam optimizer.")
         parser.add_argument("--warmup_steps", default=0, type=int, help="Linear warmup over warmup_steps.")
         parser.add_argument("--num_workers", default=4, type=int, help="kwarg passed to DataLoader")
         parser.add_argument("--num_train_epochs", dest="max_epochs", default=3, type=int)
