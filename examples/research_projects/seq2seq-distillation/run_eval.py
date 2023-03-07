@@ -20,14 +20,7 @@ from utils import calculate_bleu, calculate_rouge, chunks, parse_numeric_n_bool_
 logger = getLogger(__name__)
 
 
-for i in range(torch.cuda.device_count()):
-    allocated_memory = torch.cuda.max_memory_allocated(i)
-    total_memory = torch.cuda.get_device_properties(i).total_memory
-    if allocated_memory < 0.5 * total_memory:
-        DEFAULT_DEVICE = f"cuda:{i}"
-        break
-    else:
-        DEFAULT_DEVICE = "cpu"
+DEFAULT_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 def generate_summaries_or_translations(
