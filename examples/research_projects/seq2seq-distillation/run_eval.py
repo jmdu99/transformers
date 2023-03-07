@@ -21,8 +21,10 @@ logger = getLogger(__name__)
 
 
 for i in range(torch.cuda.device_count()):
-    if torch.cuda.max_memory_allocated(i) == 0:
-        DEFAULT_DEVICE = "cuda:" + str(i)
+    allocated_memory = torch.cuda.max_memory_allocated(i)
+    total_memory = torch.cuda.get_device_properties(i).total_memory
+    if allocated_memory < 0.5 * total_memory:
+        DEFAULT_DEVICE = f"cuda:{i}"
         break
     else:
         DEFAULT_DEVICE = "cpu"
