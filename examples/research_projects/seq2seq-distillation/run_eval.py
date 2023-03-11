@@ -14,11 +14,11 @@ from tqdm import tqdm
 
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 from optimum.intel.neural_compressor import INCModelForSeq2SeqLM
-from utils import calculate_bleu, calculate_rouge, chunks, parse_numeric_n_bool_cl_kwargs, use_task_specific_params
+from utils import calculate_bleu, calculate_rouge, chunks, parse_numeric_n_bool_cl_kwargs, use_task_specific_params, \
+    calculate_bleurt, calculate_bert_score
 
 
 logger = getLogger(__name__)
-
 
 DEFAULT_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -160,6 +160,14 @@ def run_generate(verbose=True):
     output_lns = [x.rstrip() for x in open(args.save_path).readlines()]
     reference_lns = [x.rstrip() for x in open(args.reference_path).readlines()][: len(output_lns)]
     scores: dict = score_fn(output_lns, reference_lns)
+
+    # Add more metrics
+    bleurt_score = calculate_bleurt(output_lns, reference_lns)
+    bert_score = calculate_bert_score(output_lns, reference_lns)
+    # quest_eval_score = calculate_questeval(output_lns, examples)
+
+    scores.update(bleurt_score)
+    scores.update(bert_score)
     scores.update(runtime_metrics)
 
     if args.dump_args:
