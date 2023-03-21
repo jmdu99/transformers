@@ -162,12 +162,12 @@ def run_generate(verbose=True):
     scores: dict = score_fn(output_lns, reference_lns)
 
     # Add more metrics
-    bleurt_score = calculate_bleurt(output_lns, reference_lns)
-    bert_score = calculate_bert_score(output_lns, reference_lns)
-    # quest_eval_score = calculate_questeval(output_lns, examples)
+    if args.device != 'cpu':
+        bleurt_score = calculate_bleurt(output_lns, reference_lns)
+        bert_score = calculate_bert_score(output_lns, reference_lns)
+        scores.update(bleurt_score)
+        scores.update(bert_score)
 
-    scores.update(bleurt_score)
-    scores.update(bert_score)
     scores.update(runtime_metrics)
 
     if args.dump_args:
